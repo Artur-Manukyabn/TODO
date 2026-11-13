@@ -1,10 +1,12 @@
 import axios from "axios";
 
+const isLocalDev =
+  typeof window !== "undefined" && window.location.hostname === "localhost";
+
 const API = axios.create({
-  baseURL: "http://localhost:5000/api", // Укажите URL вашего бэкенда
+  baseURL: isLocalDev ? "http://localhost:5000/api" : "/api",
 });
 
-// Автоматически добавляем токен к каждому запросу, если он есть
 API.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
   if (token) {
