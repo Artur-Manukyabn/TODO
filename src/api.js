@@ -1,10 +1,7 @@
 import axios from "axios";
 
-const isLocalDev =
-  typeof window !== "undefined" && window.location.hostname === "localhost";
-
 const API = axios.create({
-  baseURL: isLocalDev ? "http://localhost:5000/api" : "/api",
+  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000/api",
 });
 
 API.interceptors.request.use((config) => {

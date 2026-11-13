@@ -31,6 +31,12 @@
           "name": "kkkk",
           "priority": "medium",
           "completed": false
+        },
+        {
+          "id": "f3e1c0d5-4a7b-4e6f-8c9e-2b1f3d5e6a7b",
+          "name": "Complete project",
+          "priority": "high",
+          "completed": true
         }
       ]
     }

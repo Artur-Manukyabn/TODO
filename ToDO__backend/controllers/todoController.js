@@ -1,199 +1,208 @@
-const { v4: uuidv4 } = require("uuid");
-const { readDb, writeDb } = require("../utils/db");
+const User = require("../models/User");
 
 const validPriorities = ["low", "medium", "high"];
 
-const getUserByIdFromDb = (userId) => {
-  const db = readDb();
-  return db.users.find((user) => user.id === userId);
-};
+const serializeTodo = (todo, userId) => ({
+  id: todo._id ? todo._id.toString() : todo.id,
+  name: todo.name || todo.text || "",
+  text: todo.text || todo.name || "",
+  priority: todo.priority || "medium",
+  completed: Boolean(todo.completed),
+  userId,
+});
 
-const getTodoList = (req, res) => {
-  const { userId } = req.params;
-
-  if (req.userId !== userId) {
-    return res
-      .status(403)
-      .json({ message: "You can only access your own todos" });
-  }
-
-  const db = readDb();
-  const user = db.users.find((item) => item.id === userId);
-
-  if (!user) {
-    return res.status(404).json({ message: "User not found" });
-  }
-
-  const { priority, completed } = req.query;
-  let todos = [...user.todos];
-
-  if (priority) {
-    const normalizedPriority = priority.toLowerCase();
-    todos = todos.filter((todo) => todo.priority === normalizedPriority);
-  }
-
-  if (completed !== undefined) {
-    const filterValue = completed === "true";
-    todos = todos.filter((todo) => todo.completed === filterValue);
-  }
-
-  return res.json(todos);
-};
-
-const createTodo = (req, res) => {
-  const { userId } = req.params;
-  const { name, priority, completed = false } = req.body;
-
-  if (req.userId !== userId) {
-    return res
-      .status(403)
-      .json({ message: "You can only create todos for your own account" });
-  }
-
-  if (!name || !name.trim()) {
-    return res.status(400).json({ message: "Todo name is required" });
-  }
-
-  if (priority && !validPriorities.includes(priority.toLowerCase())) {
-    return res
-      .status(400)
-      .json({ message: "Priority must be low, medium, or high" });
-  }
-
-  const db = readDb();
-  const user = db.users.find((item) => item.id === userId);
-
-  if (!user) {
-    return res.status(404).json({ message: "User not found" });
-  }
-
-  const newTodo = {
-    id: uuidv4(),
-    name: name.trim(),
-    priority: (priority || "medium").toLowerCase(),
-    completed: Boolean(completed),
-  };
-
-  user.todos.push(newTodo);
-  writeDb(db);
-
-  return res.status(201).json(newTodo);
-};
-
-const updateTodo = (req, res) => {
-  const { userId, todoId } = req.params;
-  const { name, priority, completed } = req.body;
-
-  if (req.userId !== userId) {
-    return res
-      .status(403)
-      .json({ message: "You can only update your own todos" });
-  }
-
-  const db = readDb();
-  const user = db.users.find((item) => item.id === userId);
-
-  if (!user) {
-    return res.status(404).json({ message: "User not found" });
-  }
-
-  const todo = user.todos.find((item) => item.id === todoId);
-
-  if (!todo) {
-    return res.status(404).json({ message: "Todo not found" });
-  }
-
-  if (name !== undefined) {
-    if (!name.trim()) {
-      return res.status(400).json({ message: "Todo name cannot be empty" });
+const getTodoList = async (req, res) => {
+  try {
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
     }
-    todo.name = name.trim();
-  }
 
-  if (priority !== undefined) {
-    const normalizedPriority = priority.toLowerCase();
-    if (!validPriorities.includes(normalizedPriority)) {
+    const { priority, completed } = req.query;
+    let todos = user.todos.map((todo) =>
+      serializeTodo(todo, user._id.toString()),
+    );
+
+    if (priority) {
+      todos = todos.filter(
+        (todo) => todo.priority === String(priority).toLowerCase(),
+      );
+    }
+
+    if (completed !== undefined) {
+      todos = todos.filter((todo) => todo.completed === (completed === "true"));
+    }
+
+    return res.json(todos);
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ message: "Failed to fetch todos", error: error.message });
+  }
+};
+
+const getTodoById = async (req, res) => {
+  try {
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const todo = user.todos.id(req.params.id);
+    if (!todo) {
+      return res.status(404).json({ message: "Todo not found" });
+    }
+
+    return res.json(serializeTodo(todo, user._id.toString()));
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ message: "Failed to fetch todo", error: error.message });
+  }
+};
+
+const createTodo = async (req, res) => {
+  try {
+    const { text, name, priority, completed = false } = req.body;
+    const todoText = text ?? name;
+
+    if (!todoText || !String(todoText).trim()) {
+      return res.status(400).json({ message: "Todo text cannot be empty" });
+    }
+
+    if (priority && !validPriorities.includes(String(priority).toLowerCase())) {
       return res
         .status(400)
         .json({ message: "Priority must be low, medium, or high" });
     }
-    todo.priority = normalizedPriority;
-  }
 
-  if (completed !== undefined) {
-    todo.completed = Boolean(completed);
-  }
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
-  writeDb(db);
-  return res.json(todo);
+    const newTodo = {
+      name: String(todoText).trim(),
+      text: String(todoText).trim(),
+      priority: String(priority || "medium").toLowerCase(),
+      completed: Boolean(completed),
+      userId: user._id.toString(),
+    };
+
+    user.todos.push(newTodo);
+    await user.save();
+
+    return res
+      .status(201)
+      .json(user.todos.map((todo) => serializeTodo(todo, user._id.toString())));
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ message: "Failed to create todo", error: error.message });
+  }
 };
 
-const toggleTodoStatus = (req, res) => {
-  const { userId, todoId } = req.params;
-  const { completed } = req.body;
+const updateTodo = async (req, res) => {
+  try {
+    const { text, name, priority, completed } = req.body;
+    const user = await User.findById(req.userId);
 
-  if (req.userId !== userId) {
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const todo = user.todos.id(req.params.id);
+    if (!todo) {
+      return res.status(404).json({ message: "Todo not found" });
+    }
+
+    if (text !== undefined || name !== undefined) {
+      const title = text ?? name;
+      if (!String(title).trim()) {
+        return res.status(400).json({ message: "Todo text cannot be empty" });
+      }
+      todo.name = String(title).trim();
+      todo.text = String(title).trim();
+    }
+
+    if (priority !== undefined) {
+      const normalizedPriority = String(priority).toLowerCase();
+      if (!validPriorities.includes(normalizedPriority)) {
+        return res
+          .status(400)
+          .json({ message: "Priority must be low, medium, or high" });
+      }
+      todo.priority = normalizedPriority;
+    }
+
+    if (completed !== undefined) {
+      todo.completed = Boolean(completed);
+    }
+
+    await user.save();
+    return res.json(
+      user.todos.map((item) => serializeTodo(item, user._id.toString())),
+    );
+  } catch (error) {
     return res
-      .status(403)
-      .json({ message: "You can only change your own todo status" });
+      .status(500)
+      .json({ message: "Failed to update todo", error: error.message });
   }
-
-  const db = readDb();
-  const user = db.users.find((item) => item.id === userId);
-
-  if (!user) {
-    return res.status(404).json({ message: "User not found" });
-  }
-
-  const todo = user.todos.find((item) => item.id === todoId);
-
-  if (!todo) {
-    return res.status(404).json({ message: "Todo not found" });
-  }
-
-  if (completed === undefined) {
-    todo.completed = !todo.completed;
-  } else {
-    todo.completed = Boolean(completed);
-  }
-
-  writeDb(db);
-  return res.json(todo);
 };
 
-const deleteTodo = (req, res) => {
-  const { userId, todoId } = req.params;
+const toggleTodoStatus = async (req, res) => {
+  try {
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
-  if (req.userId !== userId) {
+    const todo = user.todos.id(req.params.id);
+    if (!todo) {
+      return res.status(404).json({ message: "Todo not found" });
+    }
+
+    todo.completed =
+      req.body.completed !== undefined
+        ? Boolean(req.body.completed)
+        : !todo.completed;
+    await user.save();
+
+    return res.json(serializeTodo(todo, user._id.toString()));
+  } catch (error) {
     return res
-      .status(403)
-      .json({ message: "You can only delete your own todos" });
+      .status(500)
+      .json({ message: "Failed to update todo status", error: error.message });
   }
+};
 
-  const db = readDb();
-  const user = db.users.find((item) => item.id === userId);
+const deleteTodo = async (req, res) => {
+  try {
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
-  if (!user) {
-    return res.status(404).json({ message: "User not found" });
+    user.todos = user.todos.filter(
+      (item) => item._id.toString() !== req.params.id,
+    );
+    await user.save();
+
+    return res.json(
+      user.todos.map((item) => serializeTodo(item, user._id.toString())),
+    );
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ message: "Failed to delete todo", error: error.message });
   }
-
-  const todoIndex = user.todos.findIndex((item) => item.id === todoId);
-
-  if (todoIndex === -1) {
-    return res.status(404).json({ message: "Todo not found" });
-  }
-
-  user.todos.splice(todoIndex, 1);
-  writeDb(db);
-
-  return res.json({ message: "Todo deleted successfully", todos: user.todos });
 };
 
 module.exports = {
   getTodoList,
+  getTodoById,
   createTodo,
   updateTodo,
   toggleTodoStatus,
   deleteTodo,
-  getUserByIdFromDb,
 };
