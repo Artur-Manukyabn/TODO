@@ -18,17 +18,29 @@ const allowedOrigins = [
   CLIENT_URL,
   "http://localhost:5173",
   "http://127.0.0.1:5173",
+  ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
 ];
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (!origin) {
         callback(null, true);
         return;
       }
+
+      const isAllowedOrigin =
+        allowedOrigins.includes(origin) ||
+        /^https:\/\/.*\.vercel\.app$/.test(origin);
+
+      if (isAllowedOrigin) {
+        callback(null, true);
+        return;
+      }
+
       callback(new Error("Not allowed by CORS"));
     },
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     credentials: true,
   }),
 );

@@ -25,6 +25,7 @@ function App() {
 
   // Состояния для форм авторизации
   const [isLoginView, setIsLoginView] = useState(true);
+  const [loginIdentifier, setLoginIdentifier] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
@@ -59,9 +60,10 @@ function App() {
   const handleAuth = async (e) => {
     e.preventDefault();
     setError("");
+
     const endpoint = isLoginView ? "/auth/login" : "/auth/register";
     const payload = isLoginView
-      ? { email, password }
+      ? { email: loginIdentifier, username: loginIdentifier, password }
       : { username, email, password };
 
     try {
@@ -72,7 +74,29 @@ function App() {
       const todosRes = await API.get("/todos");
       setTodos(normalizeTodo(todosRes.data));
     } catch (err) {
-      setError(err.response?.data?.message || "Произошла ошибка");
+      console.error("Auth request failed:", err);
+
+      const status = err.response?.status;
+      const message = err.response?.data?.message;
+
+      if (err.code === "ERR_NETWORK" || err.message === "Network Error") {
+        setError(
+          "Не удалось соединиться с сервером. Проверьте интернет и попробуйте позже.",
+        );
+        return;
+      }
+
+      if (status === 401) {
+        setError("Неверный логин или пароль.");
+        return;
+      }
+
+      if (status >= 500) {
+        setError("Сервер временно недоступен. Попробуйте позже.");
+        return;
+      }
+
+      setError(message || "Произошла ошибка");
     }
   };
 
@@ -178,19 +202,35 @@ function App() {
                 />
               </div>
             )}
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">
-                Email
-              </label>
-              <input
-                type="email"
-                placeholder="example@mail.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
-              />
-            </div>
+            {isLoginView ? (
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">
+                  Email или имя пользователя
+                </label>
+                <input
+                  type="text"
+                  placeholder="example@mail.com или username"
+                  value={loginIdentifier}
+                  onChange={(e) => setLoginIdentifier(e.target.value)}
+                  required
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                />
+              </div>
+            ) : (
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  placeholder="example@mail.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                />
+              </div>
+            )}
             <div>
               <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">
                 Пароль

@@ -30,7 +30,7 @@
           "id": "c37ff1ee-b787-4502-b796-bb4def7b1415",
           "name": "kkkk",
           "priority": "medium",
-          "completed": false
+          "completed": true
         },
         {
           "id": "f3e1c0d5-4a7b-4e6f-8c9e-2b1f3d5e6a7b",
@@ -39,6 +39,13 @@
           "completed": true
         }
       ]
+    },
+    {
+      "id": "9e24d9ba-aac3-4318-9698-675a5397bf55",
+      "username": "Valod",
+      "email": "valod@gmai.com",
+      "password": "$2a$10$iIfIn2QEvoDUYTDVWmfhPuCETHsLYu4Ve7xEvLD2BJkJWj4usri5S",
+      "todos": []
     }
   ]
 }

@@ -2,6 +2,8 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 const sanitizeUser = (user) => ({
   id: user._id.toString(),
   username: user.username,
@@ -78,7 +80,7 @@ const registerUser = async (req, res) => {
 const loginUser = async (req, res) => {
   try {
     const { username, email, password } = req.body;
-    const loginValue = email || username;
+    const loginValue = String(email || username || "").trim();
 
     if (!loginValue || !password) {
       return res
@@ -86,10 +88,14 @@ const loginUser = async (req, res) => {
         .json({ message: "Email/username and password are required" });
     }
 
+    console.log("[auth] login attempt", {
+      identifierType: loginValue.includes("@") ? "email" : "username",
+    });
+
     const user = await User.findOne({
       $or: [
         { email: loginValue.toLowerCase() },
-        { username: new RegExp(`^${loginValue}$`, "i") },
+        { username: new RegExp(`^${escapeRegExp(loginValue)}$`, "i") },
       ],
     });
 
@@ -118,6 +124,7 @@ const loginUser = async (req, res) => {
       user: sanitizeUser(user),
     });
   } catch (error) {
+    console.error("[auth] login error:", error.message);
     return res
       .status(500)
       .json({ message: "Login failed", error: error.message });
