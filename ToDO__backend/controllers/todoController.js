@@ -1,110 +1,108 @@
 const User = require("../models/User");
 
-const validPriorities = ["low", "medium", "high"];
+const normalizePriority = (value) => {
+  if (!value) return "Medium";
 
-const serializeTodo = (todo, userId) => ({
-  id: todo._id ? todo._id.toString() : todo.id,
-  name: todo.name || todo.text || "",
-  text: todo.text || todo.name || "",
-  priority: todo.priority || "medium",
-  completed: Boolean(todo.completed),
-  userId,
-});
+  const priority = String(value).trim().toLowerCase();
 
-const getTodoList = async (req, res) => {
+  if (priority === "high") return "High";
+  if (priority === "low") return "Low";
+  return "Medium";
+};
+
+const serializeTodo = (todo) => {
+  const item = todo.toObject ? todo.toObject() : todo;
+
+  return {
+    id: String(item._id),
+    _id: String(item._id),
+    name: item.name ?? item.text ?? "",
+    text: item.text ?? item.name ?? "",
+    priority: normalizePriority(item.priority),
+    completed: Boolean(item.completed),
+    date: {
+      createdAt: item.date?.createdAt ?? item.createdAt ?? null,
+      deadline: item.date?.deadline ?? item.deadline ?? null,
+    },
+  };
+};
+
+const serializeTodos = (todos = []) => todos.map(serializeTodo);
+
+const getTodos = async (req, res, next) => {
   try {
     const user = await User.findById(req.userId);
+
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    const { priority, completed } = req.query;
-    let todos = user.todos.map((todo) =>
-      serializeTodo(todo, user._id.toString()),
-    );
-
-    if (priority) {
-      todos = todos.filter(
-        (todo) => todo.priority === String(priority).toLowerCase(),
-      );
-    }
-
-    if (completed !== undefined) {
-      todos = todos.filter((todo) => todo.completed === (completed === "true"));
-    }
-
-    return res.json(todos);
+    return res.json(serializeTodos(user.todos || []));
   } catch (error) {
-    return res
-      .status(500)
-      .json({ message: "Failed to fetch todos", error: error.message });
+    return next(error);
   }
 };
 
-const getTodoById = async (req, res) => {
+const getTodoById = async (req, res, next) => {
   try {
     const user = await User.findById(req.userId);
+
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
     const todo = user.todos.id(req.params.id);
+
     if (!todo) {
       return res.status(404).json({ message: "Todo not found" });
     }
 
-    return res.json(serializeTodo(todo, user._id.toString()));
+    return res.json(serializeTodo(todo));
   } catch (error) {
-    return res
-      .status(500)
-      .json({ message: "Failed to fetch todo", error: error.message });
+    return next(error);
   }
 };
 
-const createTodo = async (req, res) => {
+const createTodo = async (req, res, next) => {
   try {
-    const { text, name, priority, completed = false } = req.body;
-    const todoText = text ?? name;
+    const { name, text, priority, completed, deadline } = req.body;
+    const todoName = (name ?? text ?? "").toString().trim();
+    const todoDeadline = deadline ?? req.body.date?.deadline;
 
-    if (!todoText || !String(todoText).trim()) {
-      return res.status(400).json({ message: "Todo text cannot be empty" });
+    if (!todoName) {
+      return res.status(400).json({ message: "Todo name is required" });
     }
 
-    if (priority && !validPriorities.includes(String(priority).toLowerCase())) {
-      return res
-        .status(400)
-        .json({ message: "Priority must be low, medium, or high" });
+    if (!todoDeadline || Number.isNaN(new Date(todoDeadline).getTime())) {
+      return res.status(400).json({ message: "Valid deadline is required" });
     }
 
     const user = await User.findById(req.userId);
+
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    const newTodo = {
-      name: String(todoText).trim(),
-      text: String(todoText).trim(),
-      priority: String(priority || "medium").toLowerCase(),
+    user.todos.push({
+      name: todoName,
+      priority: normalizePriority(priority),
       completed: Boolean(completed),
-      userId: user._id.toString(),
-    };
+      date: {
+        createdAt: new Date(),
+        deadline: new Date(todoDeadline),
+      },
+    });
 
-    user.todos.push(newTodo);
     await user.save();
 
-    return res
-      .status(201)
-      .json(user.todos.map((todo) => serializeTodo(todo, user._id.toString())));
+    return res.status(201).json(serializeTodos(user.todos));
   } catch (error) {
-    return res
-      .status(500)
-      .json({ message: "Failed to create todo", error: error.message });
+    return next(error);
   }
 };
 
-const updateTodo = async (req, res) => {
+const updateTodo = async (req, res, next) => {
   try {
-    const { text, name, priority, completed } = req.body;
     const user = await User.findById(req.userId);
 
     if (!user) {
@@ -112,97 +110,80 @@ const updateTodo = async (req, res) => {
     }
 
     const todo = user.todos.id(req.params.id);
+
     if (!todo) {
       return res.status(404).json({ message: "Todo not found" });
     }
 
-    if (text !== undefined || name !== undefined) {
-      const title = text ?? name;
-      if (!String(title).trim()) {
-        return res.status(400).json({ message: "Todo text cannot be empty" });
+    if (req.body.name !== undefined || req.body.text !== undefined) {
+      const nextName = (req.body.name ?? req.body.text ?? "").toString().trim();
+
+      if (!nextName) {
+        return res.status(400).json({ message: "Todo name cannot be empty" });
       }
-      todo.name = String(title).trim();
-      todo.text = String(title).trim();
+
+      todo.name = nextName;
     }
 
-    if (priority !== undefined) {
-      const normalizedPriority = String(priority).toLowerCase();
-      if (!validPriorities.includes(normalizedPriority)) {
-        return res
-          .status(400)
-          .json({ message: "Priority must be low, medium, or high" });
-      }
-      todo.priority = normalizedPriority;
+    if (req.body.priority !== undefined) {
+      todo.priority = normalizePriority(req.body.priority);
     }
 
-    if (completed !== undefined) {
-      todo.completed = Boolean(completed);
+    if (req.body.completed !== undefined) {
+      todo.completed = Boolean(req.body.completed);
+    }
+
+    if (
+      req.body.deadline !== undefined ||
+      req.body.date?.deadline !== undefined
+    ) {
+      const nextDeadline = req.body.deadline ?? req.body.date.deadline;
+
+      if (!nextDeadline || Number.isNaN(new Date(nextDeadline).getTime())) {
+        return res.status(400).json({ message: "Valid deadline is required" });
+      }
+
+      todo.date = {
+        ...todo.date,
+        deadline: new Date(nextDeadline),
+      };
     }
 
     await user.save();
-    return res.json(
-      user.todos.map((item) => serializeTodo(item, user._id.toString())),
-    );
+
+    return res.json(serializeTodos(user.todos));
   } catch (error) {
-    return res
-      .status(500)
-      .json({ message: "Failed to update todo", error: error.message });
+    return next(error);
   }
 };
 
-const toggleTodoStatus = async (req, res) => {
+const deleteTodo = async (req, res, next) => {
   try {
     const user = await User.findById(req.userId);
+
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
     const todo = user.todos.id(req.params.id);
+
     if (!todo) {
       return res.status(404).json({ message: "Todo not found" });
     }
 
-    todo.completed =
-      req.body.completed !== undefined
-        ? Boolean(req.body.completed)
-        : !todo.completed;
+    user.todos.pull(req.params.id);
     await user.save();
 
-    return res.json(serializeTodo(todo, user._id.toString()));
+    return res.json(serializeTodos(user.todos));
   } catch (error) {
-    return res
-      .status(500)
-      .json({ message: "Failed to update todo status", error: error.message });
-  }
-};
-
-const deleteTodo = async (req, res) => {
-  try {
-    const user = await User.findById(req.userId);
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    user.todos = user.todos.filter(
-      (item) => item._id.toString() !== req.params.id,
-    );
-    await user.save();
-
-    return res.json(
-      user.todos.map((item) => serializeTodo(item, user._id.toString())),
-    );
-  } catch (error) {
-    return res
-      .status(500)
-      .json({ message: "Failed to delete todo", error: error.message });
+    return next(error);
   }
 };
 
 module.exports = {
-  getTodoList,
+  getTodos,
   getTodoById,
   createTodo,
   updateTodo,
-  toggleTodoStatus,
   deleteTodo,
 };

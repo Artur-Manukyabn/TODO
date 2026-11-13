@@ -2,22 +2,42 @@ const mongoose = require("mongoose");
 
 const todoSchema = new mongoose.Schema(
   {
-    name: { type: String, required: true, trim: true },
-    text: { type: String, default: "", trim: true },
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
     priority: {
       type: String,
-      enum: ["low", "medium", "high"],
-      default: "medium",
+      enum: ["High", "Medium", "Low"],
+      default: "Medium",
     },
-    completed: { type: Boolean, default: false },
-    userId: { type: String, required: true },
+    completed: {
+      type: Boolean,
+      default: false,
+    },
+    date: {
+      createdAt: {
+        type: Date,
+        default: Date.now,
+      },
+      deadline: {
+        type: Date,
+        required: true,
+      },
+    },
   },
-  { timestamps: true },
+  { _id: true },
 );
 
 const userSchema = new mongoose.Schema(
   {
-    username: { type: String, required: true, unique: true, trim: true },
+    username: {
+      type: String,
+      required: true,
+      trim: true,
+      unique: true,
+    },
     email: {
       type: String,
       required: true,
@@ -25,8 +45,12 @@ const userSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
-    password: { type: String, required: true },
-    todos: { type: [todoSchema], default: [] },
+    password: {
+      type: String,
+      required: true,
+      minlength: 6,
+    },
+    todos: [todoSchema],
   },
   { timestamps: true },
 );

@@ -3,15 +3,7 @@
   "services": {
     "app": {
       "root": ".",
-      "framework": "vite",
-      "bindings": [
-        {
-          "type": "service",
-          "service": "todo__backend",
-          "format": "url",
-          "env": "TODO__BACKEND_URL"
-        }
-      ]
+      "framework": "vite"
     },
     "todo__backend": {
       "root": "ToDO__backend",

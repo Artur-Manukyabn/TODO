@@ -1,18 +1,18 @@
 require("dotenv").config();
+
 const express = require("express");
-const mongoose = require("mongoose");
 const cors = require("cors");
-const { authRouter, userRouter } = require("./routes/userRoutes");
+const mongoose = require("mongoose");
+const connectDB = require("./config/database");
+const authRoutes = require("./routes/authRoutes");
 const todoRoutes = require("./routes/todoRoutes");
 const authMiddleware = require("./middleware/authMiddleware");
+const { errorHandler, notFound } = require("./middleware/errorMiddleware");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
-const DATABASE_URL =
-  process.env.DATABASE_URL ||
-  process.env.MONGODB_URI ||
-  "mongodb://127.0.0.1:27017/todo_app";
+const DATABASE_URL = process.env.DATABASE_URL || process.env.MONGODB_URI;
 
 const allowedOrigins = [
   CLIENT_URL,
@@ -24,45 +24,46 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin) {
-        callback(null, true);
-        return;
-      }
-
-      const isAllowedOrigin =
+      if (
+        !origin ||
         allowedOrigins.includes(origin) ||
-        /^https:\/\/.*\.vercel\.app$/.test(origin);
-
-      if (isAllowedOrigin) {
-        callback(null, true);
-        return;
+        /^https:\/\/.*\.vercel\.app$/.test(origin)
+      ) {
+        return callback(null, true);
       }
 
-      callback(new Error("Not allowed by CORS"));
+      return callback(new Error("Not allowed by CORS"));
     },
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   }),
 );
+
 app.use(express.json());
 
-const connectDB = async () => {
-  try {
-    await mongoose.connect(DATABASE_URL, {
-      serverSelectionTimeoutMS: 5000,
-      autoIndex: true,
+const ensureDatabaseConnection = async (req, res, next) => {
+  if (!DATABASE_URL) {
+    return res.status(503).json({
+      status: "error",
+      message:
+        "Database not configured. Set DATABASE_URL in environment variables.",
     });
-    console.log("✅ MongoDB connected successfully");
-    return true;
+  }
+
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      await connectDB();
+    }
+    return next();
   } catch (error) {
-    console.error("❌ MongoDB connection failed:", error.message);
-    return false;
+    console.error("Database connection failed:", error.message);
+    return res.status(503).json({
+      status: "error",
+      message: "Database unavailable",
+    });
   }
 };
-
-app.use("/api/auth", authRouter);
-app.use("/api/users", authMiddleware, userRouter);
-app.use("/api/todos", authMiddleware, todoRoutes);
 
 app.get("/api/health", async (req, res) => {
   const isConnected = mongoose.connection.readyState === 1;
@@ -100,40 +101,30 @@ app.get("/health", async (req, res) => {
   });
 });
 
-app.get("/api/auth/me", authMiddleware, async (req, res) => {
-  const User = require("./models/User");
-  const user = await User.findById(req.userId).lean();
+app.use("/api", ensureDatabaseConnection);
+app.use("/api/auth", authRoutes);
+app.use("/api/todos", authMiddleware, todoRoutes);
 
-  if (!user) {
-    return res.status(404).json({ message: "User not found" });
-  }
-
-  return res.json({
-    id: user._id.toString(),
-    username: user.username,
-    email: user.email || "",
-    todos: user.todos.map((todo) => ({
-      id: todo._id.toString(),
-      name: todo.name || todo.text || "",
-      text: todo.text || todo.name || "",
-      priority: todo.priority || "medium",
-      completed: Boolean(todo.completed),
-      userId: user._id.toString(),
-    })),
-  });
-});
+app.use(notFound);
+app.use(errorHandler);
 
 const startServer = async () => {
-  const dbReady = await connectDB();
+  try {
+    if (DATABASE_URL) {
+      await connectDB();
+    }
 
-  if (!dbReady) {
-    console.error("Server is not starting because MongoDB connection failed.");
+    app.listen(PORT, () => {
+      console.log(`Server is running on http://localhost:${PORT}`);
+    });
+  } catch (error) {
+    console.error("Server startup failed:", error.message);
     process.exit(1);
   }
-
-  app.listen(PORT, () => {
-    console.log(`🚀 Backend running on http://localhost:${PORT}`);
-  });
 };
 
-startServer();
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = app;
