@@ -4,19 +4,23 @@ const User = require("../models/User");
 
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-const sanitizeUser = (user) => ({
-  id: user._id.toString(),
-  username: user.username,
-  email: user.email || "",
-  todos: user.todos.map((todo) => ({
-    id: todo._id ? todo._id.toString() : todo.id,
-    name: todo.name || todo.text || "",
-    text: todo.text || todo.name || "",
-    priority: todo.priority || "medium",
-    completed: Boolean(todo.completed),
-    userId: user._id.toString(),
-  })),
-});
+const sanitizeUser = (user) => {
+  const safeTodos = Array.isArray(user.todos) ? user.todos : [];
+
+  return {
+    id: user._id.toString(),
+    username: user.username,
+    email: user.email || "",
+    todos: safeTodos.map((todo) => ({
+      id: todo._id ? todo._id.toString() : todo.id,
+      name: todo.name || todo.text || "",
+      text: todo.text || todo.name || "",
+      priority: todo.priority || "medium",
+      completed: Boolean(todo.completed),
+      userId: user._id.toString(),
+    })),
+  };
+};
 
 const registerUser = async (req, res) => {
   try {

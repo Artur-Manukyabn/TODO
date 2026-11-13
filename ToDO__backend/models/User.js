@@ -26,7 +26,7 @@ const userSchema = new mongoose.Schema(
       trim: true,
     },
     password: { type: String, required: true },
-    todos: [todoSchema],
+    todos: { type: [todoSchema], default: [] },
   },
   { timestamps: true },
 );
