@@ -53,17 +53,52 @@ const connectDB = async () => {
       autoIndex: true,
     });
     console.log("✅ MongoDB connected successfully");
+    return true;
   } catch (error) {
     console.error("❌ MongoDB connection failed:", error.message);
-    process.exit(1);
+    return false;
   }
 };
-
-connectDB();
 
 app.use("/api/auth", authRouter);
 app.use("/api/users", authMiddleware, userRouter);
 app.use("/api/todos", authMiddleware, todoRoutes);
+
+app.get("/api/health", async (req, res) => {
+  const isConnected = mongoose.connection.readyState === 1;
+
+  if (!isConnected) {
+    return res.status(503).json({
+      status: "error",
+      message: "Database not connected",
+      database: "disconnected",
+    });
+  }
+
+  return res.json({
+    status: "ok",
+    message: "Backend is running",
+    database: "connected",
+  });
+});
+
+app.get("/health", async (req, res) => {
+  const isConnected = mongoose.connection.readyState === 1;
+
+  if (!isConnected) {
+    return res.status(503).json({
+      status: "error",
+      message: "Database not connected",
+      database: "disconnected",
+    });
+  }
+
+  return res.json({
+    status: "ok",
+    message: "Backend is running",
+    database: "connected",
+  });
+});
 
 app.get("/api/auth/me", authMiddleware, async (req, res) => {
   const User = require("./models/User");
@@ -88,10 +123,17 @@ app.get("/api/auth/me", authMiddleware, async (req, res) => {
   });
 });
 
-app.get("/health", (req, res) => {
-  res.json({ status: "ok", message: "Backend is running" });
-});
+const startServer = async () => {
+  const dbReady = await connectDB();
 
-app.listen(PORT, () => {
-  console.log(`🚀 Backend running on http://localhost:${PORT}`);
-});
+  if (!dbReady) {
+    console.error("Server is not starting because MongoDB connection failed.");
+    process.exit(1);
+  }
+
+  app.listen(PORT, () => {
+    console.log(`🚀 Backend running on http://localhost:${PORT}`);
+  });
+};
+
+startServer();
